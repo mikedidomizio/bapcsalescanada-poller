@@ -1,0 +1,26 @@
+{
+  "name": "none",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "tsx ./src/index.ts",
+    "build": "tsc",
+    "lint": "eslint src --fix",
+    "test": "vitest ./src"
+  },
+  "author": "Mike DiDomizio",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^0.30.0"
+  }
+}
