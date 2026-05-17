@@ -8,6 +8,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "strict": true,
+    "types": ["node"],
     "lib": ["es2022"],
     "skipLibCheck": true
   },

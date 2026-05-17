@@ -1,0 +1,15 @@
+services:
+  poller:
+    build: .
+    restart: unless-stopped
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_USER_ID: ${DISCORD_USER_ID}
+      POLL_INTERVAL_MINUTES: ${POLL_INTERVAL_MINUTES:-15}
+      REDDIT_URL: ${REDDIT_URL:-https://www.reddit.com/r/bapcsalescanada/new.json}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-bapcsalescanada-poller/1.0}
+      RULES_FILE_PATH: /data/rules.json
+      STATE_FILE_PATH: /data/state.json
+    volumes:
+      - ./data:/data
+

@@ -1,18 +1,20 @@
 {
-  "name": "none",
+  "name": "bapcsalescanada-poller",
   "version": "1.0.0",
-  "description": "",
+  "description": "Poll r/bapcsalescanada and send Discord DM notifications for matching deals",
   "private": true,
   "main": "dist/index.js",
   "scripts": {
     "start": "tsx ./src/index.ts",
+    "start:prod": "node ./dist/index.js",
     "build": "tsc",
     "lint": "eslint src --fix",
-    "test": "vitest ./src"
+    "test": "vitest run ./src"
   },
   "author": "Mike DiDomizio",
   "license": "ISC",
   "devDependencies": {
+    "@types/node": "^22.15.21",
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.0.0",

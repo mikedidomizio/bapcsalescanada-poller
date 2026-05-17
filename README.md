@@ -1,21 +1,79 @@
-# Quick starter template with Typescript/Prettier/ESLint/Vitest
+# bapcsalescanada Poller
 
-This is a template to be used for a quick Javascript setup that includes
+Polls `https://www.reddit.com/r/bapcsalescanada/new.json` every 15 minutes, matches post titles against keyword rules, and sends Discord DM alerts to a target user ID.
 
-- Typescript
-- Prettier/ESLint
-- Vitest
-- GitHub actions
-- Proper build output with typedefs
+## How it works
 
-The idea behind this was because I like to be able to quickly get a basic Javascript project up and running.
+- Pulls latest posts from Reddit `/new.json`
+- Tracks `created_utc` in `state.json` so only newer posts are scanned next cycle
+- Loads title keyword rules from a JSON file (`rules.json`)
+- Sends a Discord DM for each matching rule/post
+- Throws an error immediately on Discord auth/permission failures (no retry)
 
-⚠️ Don't forget to update the repository package name, description, author, and license
+## Rules file format
 
-Squashing all commits can be done with the following commands:
+`data/rules.json`:
 
-```shell
-git reset --soft $(git rev-list --max-parents=0 HEAD)
-git add -A
-git commit --amend --reset-author -m "Initial commit"
+```json
+{
+  "rules": [
+	{
+	  "itemType": "Mouse",
+	  "keywords": ["mouse", "logitech", "razer"]
+	}
+  ]
+}
+```
+
+Matching is case-insensitive and checks keywords against the Reddit post title.
+
+## Discord bot setup (DM)
+
+1. Create a Discord application and bot in the Discord Developer Portal.
+2. Copy the bot token and set `DISCORD_BOT_TOKEN`.
+3. Get your user ID (Discord Developer Mode) and set `DISCORD_USER_ID`.
+4. Ensure the bot can DM your account (privacy settings and mutual server as needed).
+
+## Local run
+
+```bash
+npm install
+cp .env.example .env
+npm run build
+npm run start
+```
+
+`npm run start` auto-loads values from `.env` (if the file exists).
+
+Environment variables:
+
+- `DISCORD_BOT_TOKEN` (required)
+- `DISCORD_USER_ID` (required)
+- `POLL_INTERVAL_MINUTES` (optional, default `15`)
+- `REDDIT_URL` (optional, default subreddit URL)
+- `REDDIT_USER_AGENT` (optional)
+- `RULES_FILE_PATH` (optional, default `./data/rules.json`)
+- `STATE_FILE_PATH` (optional, default `./data/state.json`)
+
+For Docker runs, `docker-compose.yml` sets these to `/data/rules.json` and `/data/state.json` in-container.
+
+For non-container local runs, the defaults already point to the project `data` folder. You can still override them if needed:
+
+- `RULES_FILE_PATH=./data/rules.json`
+- `STATE_FILE_PATH=./data/state.json`
+
+## Docker run
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+docker compose logs -f
+```
+
+`docker-compose.yml` mounts `./data` to `/data`, so rule and state files persist and are editable without rebuilding.
+
+## Tests
+
+```bash
+npm test
 ```
