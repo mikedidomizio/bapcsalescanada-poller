@@ -1,5 +1,5 @@
 services:
-  poller:
+  bapcsalescanada-poller:
     build: .
     restart: unless-stopped
     environment:
