@@ -41,7 +41,10 @@ function sanitizeConfigForLog(config: AppConfig): AppConfig {
   }
 }
 
-export function formatStartupLog(config: AppConfig, lastSeenUtc: number): string {
+export function formatStartupLog(
+  config: AppConfig,
+  lastSeenUtc: number,
+): string {
   const sanitizedConfig = sanitizeConfigForLog(config)
   const lastScanIso = formatLastScanIso(lastSeenUtc)
 

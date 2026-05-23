@@ -114,4 +114,3 @@ describe('formatStartupLog', () => {
     expect(output).toContain('lastScanIso=never')
   })
 })
-
