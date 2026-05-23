@@ -75,6 +75,7 @@ docker compose logs -f
 
 ## Docker docs
 
+- Docker Hub image page: https://hub.docker.com/r/mikedidomizio/bapcsalescanada-poller
 - User-facing Docker Hub overview: `DOCKERHUB_OVERVIEW.md`
 - Maintainer publishing notes: `DOCKERHUB_PUBLISHING.md`
 

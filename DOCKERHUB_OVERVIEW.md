@@ -2,6 +2,8 @@
 
 Polls `r/bapcsalescanada/new` on a schedule, matches post titles against keyword rules, and sends Discord DM alerts for matched deals.
 
+GitHub repository: https://github.com/mikedidomizio/bapcsalescanada-poller
+
 ## What this container does
 
 - Polls Reddit `/new.json` every `POLL_INTERVAL_MINUTES` (default: `15`)
