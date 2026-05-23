@@ -73,6 +73,11 @@ docker compose logs -f
 
 `docker-compose.yml` mounts `./data` to `/data`, so rule and state files persist and are editable without rebuilding.
 
+## Docker docs
+
+- User-facing Docker Hub overview: `DOCKERHUB_OVERVIEW.md`
+- Maintainer publishing notes: `DOCKERHUB_PUBLISHING.md`
+
 ## Tests
 
 ```bash
