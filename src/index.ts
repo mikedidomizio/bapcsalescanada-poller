@@ -3,7 +3,7 @@ import { matchPostToRules } from './matcher'
 import { createNotifier, type Notifier } from './notifier'
 import { fetchNewPosts } from './reddit'
 import { loadLastSeenUtc, saveLastSeenUtc } from './state'
-import type { RedditPost, Rule } from './types'
+import type { AppConfig, RedditPost, Rule } from './types'
 
 export interface PollerDeps {
   fetchPosts: () => Promise<RedditPost[]>
@@ -17,6 +17,35 @@ export interface PollCycleResult {
   scannedPosts: number
   matchedDeals: number
   lastSeenUtc: number
+}
+
+function formatLastScanIso(lastSeenUtc: number): string {
+  if (!Number.isFinite(lastSeenUtc) || lastSeenUtc < 0) {
+    return 'invalid'
+  }
+
+  if (lastSeenUtc === 0) {
+    return 'never'
+  }
+
+  return new Date(lastSeenUtc * 1000).toISOString()
+}
+
+function sanitizeConfigForLog(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    notifier: {
+      ...config.notifier,
+      botToken: '[redacted]',
+    },
+  }
+}
+
+export function formatStartupLog(config: AppConfig, lastSeenUtc: number): string {
+  const sanitizedConfig = sanitizeConfigForLog(config)
+  const lastScanIso = formatLastScanIso(lastSeenUtc)
+
+  return `[startup] config=${JSON.stringify(sanitizedConfig)} lastScanUtc=${lastSeenUtc} lastScanIso=${lastScanIso}`
 }
 
 export async function runPollCycle(deps: PollerDeps): Promise<PollCycleResult> {
@@ -65,6 +94,8 @@ function sleep(ms: number): Promise<void> {
 export async function runForever(): Promise<void> {
   await loadEnvFile()
   const config = loadConfig()
+  const startupLastSeenUtc = await loadLastSeenUtc(config.stateFilePath)
+  console.log(formatStartupLog(config, startupLastSeenUtc))
   const notifier = createNotifier(config.notifier)
 
   const deps: PollerDeps = {

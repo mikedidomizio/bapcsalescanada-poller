@@ -1,6 +1,7 @@
 # bapcsalescanada Poller
 
-Polls `https://www.reddit.com/r/bapcsalescanada/new.json` every 15 minutes, matches post titles against keyword rules, and sends Discord DM alerts to a target user ID.
+Polls `https://www.reddit.com/r/bapcsalescanada/new.json` every 15 minutes, 
+matches post titles against keyword rules, and sends Discord DM alerts to a target user ID.
 
 ## How it works
 

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { runPollCycle } from '../index'
+import { formatStartupLog, runPollCycle } from '../index'
 import type { PollerDeps } from '../index'
-import type { RedditPost, Rule } from '../types'
+import type { AppConfig, RedditPost, Rule } from '../types'
 
 const samplePosts: RedditPost[] = [
   {
@@ -37,6 +37,19 @@ function createDeps(overrides?: Partial<PollerDeps>): PollerDeps {
     },
     ...overrides,
   }
+}
+
+const sampleConfig: AppConfig = {
+  redditUrl: 'https://www.reddit.com/r/bapcsalescanada/new.json',
+  redditUserAgent: 'bapcsalescanada-poller/1.0',
+  pollIntervalMs: 900_000,
+  rulesFilePath: './data/rules.json',
+  stateFilePath: './data/state.json',
+  notifier: {
+    transport: 'discord-dm',
+    botToken: 'secret-token-value',
+    userId: '123456789',
+  },
 }
 
 describe('runPollCycle', () => {
@@ -82,3 +95,23 @@ describe('runPollCycle', () => {
     })
   })
 })
+
+describe('formatStartupLog', () => {
+  it('includes sanitized config and both UTC and ISO last scan times', () => {
+    const output = formatStartupLog(sampleConfig, 1_700_000_000)
+
+    expect(output).toContain('[startup] config=')
+    expect(output).toContain('lastScanUtc=1700000000')
+    expect(output).toContain('lastScanIso=2023-11-14T22:13:20.000Z')
+    expect(output).toContain('"botToken":"[redacted]"')
+    expect(output).not.toContain('secret-token-value')
+  })
+
+  it('reports never when no prior scan has been stored', () => {
+    const output = formatStartupLog(sampleConfig, 0)
+
+    expect(output).toContain('lastScanUtc=0')
+    expect(output).toContain('lastScanIso=never')
+  })
+})
+
