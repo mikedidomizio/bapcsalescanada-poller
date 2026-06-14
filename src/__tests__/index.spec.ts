@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { formatStartupLog, runPollCycle } from '../index'
+import {
+  formatPollCadenceLog,
+  formatStartupLog,
+  runPollCycle,
+  shouldKeepPolling,
+} from '../index'
 import type { PollerDeps } from '../index'
 import type { AppConfig, RedditPost, Rule } from '../types'
 
@@ -112,5 +117,33 @@ describe('formatStartupLog', () => {
 
     expect(output).toContain('lastScanUtc=0')
     expect(output).toContain('lastScanIso=never')
+  })
+})
+
+describe('formatPollCadenceLog', () => {
+  it('reports first call cadence when there is no previous call time', () => {
+    const output = formatPollCadenceLog(undefined, 1_000, 900_000)
+
+    expect(output).toBe(
+      '[poll-cadence] sinceLastCallMs=first-call jitterPct=n/a',
+    )
+  })
+
+  it('reports elapsed time and signed jitter percentage', () => {
+    const output = formatPollCadenceLog(10_000, 1_000_000, 900_000)
+
+    expect(output).toBe(
+      '[poll-cadence] sinceLastCallMs=990000 jitterPct=+10.00%',
+    )
+  })
+})
+
+describe('shouldKeepPolling', () => {
+  it('returns true when stop has not been requested', () => {
+    expect(shouldKeepPolling(false)).toBe(true)
+  })
+
+  it('returns false when stop has been requested', () => {
+    expect(shouldKeepPolling(true)).toBe(false)
   })
 })

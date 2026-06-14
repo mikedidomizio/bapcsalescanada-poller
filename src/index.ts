@@ -19,6 +19,20 @@ export interface PollCycleResult {
   lastSeenUtc: number
 }
 
+function formatJitterPct(
+  actualIntervalMs: number,
+  expectedIntervalMs: number,
+): string {
+  if (!Number.isFinite(expectedIntervalMs) || expectedIntervalMs <= 0) {
+    return 'n/a'
+  }
+
+  const jitterPct =
+    ((actualIntervalMs - expectedIntervalMs) / expectedIntervalMs) * 100
+  const signPrefix = jitterPct >= 0 ? '+' : ''
+  return `${signPrefix}${jitterPct.toFixed(2)}%`
+}
+
 function formatLastScanIso(lastSeenUtc: number): string {
   if (!Number.isFinite(lastSeenUtc) || lastSeenUtc < 0) {
     return 'invalid'
@@ -49,6 +63,27 @@ export function formatStartupLog(
   const lastScanIso = formatLastScanIso(lastSeenUtc)
 
   return `[startup] config=${JSON.stringify(sanitizedConfig)} lastScanUtc=${lastSeenUtc} lastScanIso=${lastScanIso}`
+}
+
+export function formatPollCadenceLog(
+  lastCallStartedAtMs: number | undefined,
+  currentCallStartedAtMs: number,
+  pollIntervalMs: number,
+): string {
+  if (lastCallStartedAtMs === undefined) {
+    return '[poll-cadence] sinceLastCallMs=first-call jitterPct=n/a'
+  }
+
+  const sinceLastCallMs = Math.max(
+    0,
+    currentCallStartedAtMs - lastCallStartedAtMs,
+  )
+
+  return `[poll-cadence] sinceLastCallMs=${sinceLastCallMs} jitterPct=${formatJitterPct(sinceLastCallMs, pollIntervalMs)}`
+}
+
+export function shouldKeepPolling(stopRequested: boolean): boolean {
+  return !stopRequested
 }
 
 export async function runPollCycle(deps: PollerDeps): Promise<PollCycleResult> {
@@ -110,8 +145,21 @@ export async function runForever(): Promise<void> {
     notifier,
   }
 
+  let lastPollCallStartedAtMs: number | undefined
+  const stopRequested = false
+
   // Run immediately on startup, then keep polling at the configured interval.
-  while (true) {
+  while (shouldKeepPolling(stopRequested)) {
+    const currentPollCallStartedAtMs = Date.now()
+    console.log(
+      formatPollCadenceLog(
+        lastPollCallStartedAtMs,
+        currentPollCallStartedAtMs,
+        config.pollIntervalMs,
+      ),
+    )
+    lastPollCallStartedAtMs = currentPollCallStartedAtMs
+
     const result = await runPollCycle(deps)
     console.log(
       `[poll-cycle] scanned=${result.scannedPosts} matched=${result.matchedDeals} lastSeenUtc=${result.lastSeenUtc}`,
