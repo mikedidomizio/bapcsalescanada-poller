@@ -16,6 +16,19 @@ interface RedditRawPost {
   created_utc?: number
 }
 
+export interface RedditFetchAttempt {
+  url: string
+  status: number
+  statusText: string
+}
+
+export interface FetchPostsWithFallbackResult {
+  posts: RedditPost[]
+  usedUrl: string
+  attempts: RedditFetchAttempt[]
+  primaryFailed: boolean
+}
+
 function normalizePost(
   maybePost: RedditRawPost | undefined,
 ): RedditPost | null {
@@ -43,23 +56,71 @@ export async function fetchNewPosts(
   userAgent: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<RedditPost[]> {
-  const response = await fetchImpl(redditUrl, {
-    headers: {
-      'User-Agent': userAgent,
-      Accept: 'application/json',
-    },
-  })
+  const result = await fetchNewPostsWithFallback(
+    [redditUrl],
+    userAgent,
+    fetchImpl,
+  )
+  return result.posts
+}
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch Reddit posts: ${response.status} ${response.statusText}`,
-    )
+export async function fetchNewPostsWithFallback(
+  redditUrls: string[],
+  userAgent: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<FetchPostsWithFallbackResult> {
+  const urls = redditUrls.filter((url) => url.trim().length > 0)
+
+  if (urls.length === 0) {
+    throw new Error('Failed to fetch Reddit posts: no Reddit URLs configured')
   }
 
-  const payload = (await response.json()) as RedditListingResponse
-  const children = payload.data?.children ?? []
+  const attempts: RedditFetchAttempt[] = []
 
-  return children
-    .map((entry) => normalizePost(entry.data))
-    .filter((post): post is RedditPost => post !== null)
+  for (const [index, redditUrl] of urls.entries()) {
+    try {
+      const response = await fetchImpl(redditUrl, {
+        headers: {
+          'User-Agent': userAgent,
+          Accept: 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        attempts.push({
+          url: redditUrl,
+          status: response.status,
+          statusText: response.statusText || 'Unknown error',
+        })
+        continue
+      }
+
+      const payload = (await response.json()) as RedditListingResponse
+      const children = payload.data?.children ?? []
+      const posts = children
+        .map((entry) => normalizePost(entry.data))
+        .filter((post): post is RedditPost => post !== null)
+
+      return {
+        posts,
+        usedUrl: redditUrl,
+        attempts,
+        primaryFailed: index > 0,
+      }
+    } catch (error) {
+      attempts.push({
+        url: redditUrl,
+        status: 0,
+        statusText: (error as Error).message,
+      })
+    }
+  }
+
+  const attemptSummary = attempts
+    .map(
+      (attempt) => `${attempt.url} -> ${attempt.status} ${attempt.statusText}`,
+    )
+    .join('; ')
+
+  throw new Error(`Failed to fetch Reddit posts: ${attemptSummary}`)
 }

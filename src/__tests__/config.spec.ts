@@ -17,6 +17,10 @@ describe('loadConfig', () => {
     expect(config.redditUrl).toBe(
       'https://www.reddit.com/r/bapcsalescanada/new.json',
     )
+    expect(config.redditFallbackUrls).toEqual([
+      'https://old.reddit.com/r/bapcsalescanada/new.json',
+    ])
+    expect(config.pollJitterPercent).toBe(10)
     expect(config.rulesFilePath).toBe('./data/rules.json')
     expect(config.stateFilePath).toBe('./data/state.json')
     expect(config.notifier.transport).toBe('discord-dm')
@@ -36,6 +40,32 @@ describe('loadConfig', () => {
         POLL_INTERVAL_MINUTES: '0',
       }),
     ).toThrow(/POLL_INTERVAL_MINUTES/)
+  })
+
+  it('parses fallback urls and jitter from env', () => {
+    const config = loadConfig({
+      DISCORD_BOT_TOKEN: 'token',
+      DISCORD_USER_ID: 'user',
+      REDDIT_FALLBACK_URLS:
+        'https://old.reddit.com/r/bapcsalescanada/new.json, https://www.reddit.com/r/bapcsalescanada/new.json',
+      POLL_JITTER_PERCENT: '7.5',
+    })
+
+    expect(config.redditFallbackUrls).toEqual([
+      'https://old.reddit.com/r/bapcsalescanada/new.json',
+      'https://www.reddit.com/r/bapcsalescanada/new.json',
+    ])
+    expect(config.pollJitterPercent).toBe(7.5)
+  })
+
+  it('throws for invalid jitter percent', () => {
+    expect(() =>
+      loadConfig({
+        DISCORD_BOT_TOKEN: 'token',
+        DISCORD_USER_ID: 'user',
+        POLL_JITTER_PERCENT: '101',
+      }),
+    ).toThrow(/POLL_JITTER_PERCENT/)
   })
 })
 
