@@ -25,8 +25,10 @@ export type NotifierConfig = DiscordDmConfig
 
 export interface AppConfig {
   redditUrl: string
+  redditFallbackUrls: string[]
   redditUserAgent: string
   pollIntervalMs: number
+  pollJitterPercent: number
   rulesFilePath: string
   stateFilePath: string
   notifier: NotifierConfig

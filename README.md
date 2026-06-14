@@ -6,6 +6,7 @@ matches post titles against keyword rules, and sends Discord DM alerts to a targ
 ## How it works
 
 - Pulls latest posts from Reddit `/new.json`
+- Tries configured fallback Reddit endpoints when the primary endpoint is blocked or fails
 - Tracks `created_utc` in `state.json` so only newer posts are scanned next cycle
 - Loads title keyword rules from a JSON file (`rules.json`)
 - Sends a Discord DM for each matching rule/post
@@ -52,9 +53,17 @@ Environment variables:
 - `DISCORD_USER_ID` (required)
 - `POLL_INTERVAL_MINUTES` (optional, default `15`)
 - `REDDIT_URL` (optional, default subreddit URL)
+- `REDDIT_FALLBACK_URLS` (optional, comma-separated URL list; default `https://old.reddit.com/r/bapcsalescanada/new.json`)
 - `REDDIT_USER_AGENT` (optional)
+- `POLL_JITTER_PERCENT` (optional, default `10`, symmetric jitter of `+/-` percent around interval)
 - `RULES_FILE_PATH` (optional, default `./data/rules.json`)
 - `STATE_FILE_PATH` (optional, default `./data/state.json`)
+
+If the primary Reddit source returns a non-success HTTP response (for example 403/429), the poller will:
+
+1. Attempt fallback URLs for that cycle.
+2. Emit detailed fallback/error logs for troubleshooting.
+3. Rotate the primary source for the next cycle.
 
 For Docker runs, `docker-compose.yml` sets these to `/data/rules.json` and `/data/state.json` in-container.
 

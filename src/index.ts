@@ -1,7 +1,10 @@
 import { loadConfig, loadEnvFile, loadRulesFromFile } from './config'
 import { matchPostToRules } from './matcher'
 import { createNotifier, type Notifier } from './notifier'
-import { fetchNewPosts } from './reddit'
+import {
+  fetchNewPostsWithFallback,
+  type FetchPostsWithFallbackResult,
+} from './reddit'
 import { loadLastSeenUtc, saveLastSeenUtc } from './state'
 import type { AppConfig, RedditPost, Rule } from './types'
 
@@ -94,15 +97,92 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
+export function buildRedditSourceOrder(
+  primaryUrl: string,
+  fallbackUrls: string[],
+): string[] {
+  const seen = new Set<string>()
+  const sourceOrder: string[] = []
+
+  for (const url of [primaryUrl, ...fallbackUrls]) {
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl || seen.has(trimmedUrl)) {
+      continue
+    }
+    seen.add(trimmedUrl)
+    sourceOrder.push(trimmedUrl)
+  }
+
+  return sourceOrder
+}
+
+export function rotateRedditSources(sourceOrder: string[]): string[] {
+  if (sourceOrder.length <= 1) {
+    return sourceOrder
+  }
+
+  return [...sourceOrder.slice(1), sourceOrder[0]]
+}
+
+export function rotateSourcesAfterSuccessfulCycle(
+  sourceOrder: string[],
+  fetchResult: FetchPostsWithFallbackResult | null,
+): { sourceOrder: string[]; rotated: boolean } {
+  if (!fetchResult?.primaryFailed) {
+    return { sourceOrder, rotated: false }
+  }
+
+  return {
+    sourceOrder: rotateRedditSources(sourceOrder),
+    rotated: true,
+  }
+}
+
+export function calculateJitteredIntervalMs(
+  baseIntervalMs: number,
+  jitterPercent: number,
+  randomValue = Math.random(),
+): number {
+  if (jitterPercent <= 0) {
+    return baseIntervalMs
+  }
+
+  const jitterRangeMs = (baseIntervalMs * jitterPercent) / 100
+  const jitterOffsetMs = (randomValue * 2 - 1) * jitterRangeMs
+
+  return Math.max(0, Math.round(baseIntervalMs + jitterOffsetMs))
+}
+
+function getLastFetchResult(state: {
+  lastFetchResult: FetchPostsWithFallbackResult | null
+}): FetchPostsWithFallbackResult | null {
+  return state.lastFetchResult
+}
+
 export async function runForever(): Promise<void> {
   await loadEnvFile()
   const config = loadConfig()
   const startupLastSeenUtc = await loadLastSeenUtc(config.stateFilePath)
   console.log(formatStartupLog(config, startupLastSeenUtc))
   const notifier = createNotifier(config.notifier)
+  let redditSourceOrder = buildRedditSourceOrder(
+    config.redditUrl,
+    config.redditFallbackUrls,
+  )
+  const runtimeState: { lastFetchResult: FetchPostsWithFallbackResult | null } =
+    {
+      lastFetchResult: null,
+    }
 
   const deps: PollerDeps = {
-    fetchPosts: () => fetchNewPosts(config.redditUrl, config.redditUserAgent),
+    fetchPosts: async () => {
+      const fetchResult = await fetchNewPostsWithFallback(
+        redditSourceOrder,
+        config.redditUserAgent,
+      )
+      runtimeState.lastFetchResult = fetchResult
+      return fetchResult.posts
+    },
     loadRules: () => loadRulesFromFile(config.rulesFilePath),
     loadLastSeenUtc: () => loadLastSeenUtc(config.stateFilePath),
     saveLastSeenUtc: (lastSeenUtc) =>
@@ -112,11 +192,53 @@ export async function runForever(): Promise<void> {
 
   // Run immediately on startup, then keep polling at the configured interval.
   while (true) {
-    const result = await runPollCycle(deps)
-    console.log(
-      `[poll-cycle] scanned=${result.scannedPosts} matched=${result.matchedDeals} lastSeenUtc=${result.lastSeenUtc}`,
+    runtimeState.lastFetchResult = null
+
+    try {
+      const result = await runPollCycle(deps)
+      console.log(
+        `[poll-cycle] scanned=${result.scannedPosts} matched=${result.matchedDeals} lastSeenUtc=${result.lastSeenUtc}`,
+      )
+
+      const fetchResult = getLastFetchResult(runtimeState)
+
+      if (fetchResult?.primaryFailed) {
+        const attemptTrail = fetchResult.attempts
+          .map((attempt) => `${attempt.url}:${attempt.status}`)
+          .join(',')
+        console.warn(
+          `[poll-cycle:fallback] primary=${redditSourceOrder[0]} used=${fetchResult.usedUrl} attempts=${attemptTrail}`,
+        )
+
+        const rotation = rotateSourcesAfterSuccessfulCycle(
+          redditSourceOrder,
+          fetchResult,
+        )
+        redditSourceOrder = rotation.sourceOrder
+        console.warn(
+          `[poll-cycle:rotation] reason=primary-non-success newPrimary=${redditSourceOrder[0]}`,
+        )
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
+      if (message.startsWith('Failed to fetch Reddit posts:')) {
+        console.warn(`[poll-cycle:fetch-error] ${message}`)
+        redditSourceOrder = rotateRedditSources(redditSourceOrder)
+        console.warn(
+          `[poll-cycle:rotation] reason=fetch-error newPrimary=${redditSourceOrder[0]}`,
+        )
+      } else {
+        throw error
+      }
+    }
+
+    await sleep(
+      calculateJitteredIntervalMs(
+        config.pollIntervalMs,
+        config.pollJitterPercent,
+      ),
     )
-    await sleep(config.pollIntervalMs)
   }
 }
 

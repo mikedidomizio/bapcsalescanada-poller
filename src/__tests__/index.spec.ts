@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { formatStartupLog, runPollCycle } from '../index'
+import {
+  buildRedditSourceOrder,
+  calculateJitteredIntervalMs,
+  formatStartupLog,
+  rotateSourcesAfterSuccessfulCycle,
+  rotateRedditSources,
+  runPollCycle,
+} from '../index'
+import {
+  fetchNewPostsWithFallback,
+  type FetchPostsWithFallbackResult,
+} from '../reddit'
 import type { PollerDeps } from '../index'
 import type { AppConfig, RedditPost, Rule } from '../types'
 
@@ -41,8 +52,10 @@ function createDeps(overrides?: Partial<PollerDeps>): PollerDeps {
 
 const sampleConfig: AppConfig = {
   redditUrl: 'https://www.reddit.com/r/bapcsalescanada/new.json',
+  redditFallbackUrls: ['https://old.reddit.com/r/bapcsalescanada/new.json'],
   redditUserAgent: 'bapcsalescanada-poller/1.0',
   pollIntervalMs: 900_000,
+  pollJitterPercent: 10,
   rulesFilePath: './data/rules.json',
   stateFilePath: './data/state.json',
   notifier: {
@@ -112,5 +125,146 @@ describe('formatStartupLog', () => {
 
     expect(output).toContain('lastScanUtc=0')
     expect(output).toContain('lastScanIso=never')
+  })
+})
+
+describe('reddit source helpers', () => {
+  it('builds source order with deduped urls', () => {
+    expect(
+      buildRedditSourceOrder('https://a.example/new.json', [
+        'https://b.example/new.json',
+        'https://a.example/new.json',
+        '  ',
+      ]),
+    ).toEqual(['https://a.example/new.json', 'https://b.example/new.json'])
+  })
+
+  it('rotates source order by one position', () => {
+    expect(
+      rotateRedditSources([
+        'https://a.example/new.json',
+        'https://b.example/new.json',
+        'https://c.example/new.json',
+      ]),
+    ).toEqual([
+      'https://b.example/new.json',
+      'https://c.example/new.json',
+      'https://a.example/new.json',
+    ])
+  })
+
+  it('calculates symmetric jitter around base interval', () => {
+    expect(calculateJitteredIntervalMs(1000, 10, 0)).toBe(900)
+    expect(calculateJitteredIntervalMs(1000, 10, 0.5)).toBe(1000)
+    expect(calculateJitteredIntervalMs(1000, 10, 1)).toBe(1100)
+  })
+
+  it('rotates only when primary failed and fallback was used', () => {
+    const sourceOrder = [
+      'https://a.example/new.json',
+      'https://b.example/new.json',
+    ]
+
+    expect(
+      rotateSourcesAfterSuccessfulCycle(sourceOrder, {
+        posts: [],
+        usedUrl: sourceOrder[0],
+        attempts: [],
+        primaryFailed: false,
+      }),
+    ).toEqual({
+      sourceOrder,
+      rotated: false,
+    })
+
+    expect(
+      rotateSourcesAfterSuccessfulCycle(sourceOrder, {
+        posts: [],
+        usedUrl: sourceOrder[1],
+        attempts: [
+          { url: sourceOrder[0], status: 403, statusText: 'Forbidden' },
+        ],
+        primaryFailed: true,
+      }),
+    ).toEqual({
+      sourceOrder: ['https://b.example/new.json', 'https://a.example/new.json'],
+      rotated: true,
+    })
+  })
+})
+
+describe('poll orchestration rotation flow', () => {
+  it('uses rotated primary on next cycle only after primary non-success', async () => {
+    let sourceOrder = buildRedditSourceOrder(
+      'https://www.reddit.com/r/bapcsalescanada/new.json',
+      ['https://old.reddit.com/r/bapcsalescanada/new.json'],
+    )
+    let fetchResult: FetchPostsWithFallbackResult | null = null
+
+    const fakeFetch = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+
+      if (url.includes('www.reddit.com')) {
+        return new Response('blocked', { status: 403 })
+      }
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            children: [
+              {
+                data: {
+                  id: 'cycle-post',
+                  title: '[Mouse] Cycle test deal',
+                  permalink: '/r/bapcsalescanada/comments/cycle/test',
+                  url: 'https://example.com/cycle',
+                  created_utc: 250,
+                },
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+
+    const deps = createDeps({
+      fetchPosts: async () => {
+        fetchResult = await fetchNewPostsWithFallback(
+          sourceOrder,
+          'test-agent',
+          fakeFetch,
+        )
+        return fetchResult.posts
+      },
+      loadRules: async () => [],
+      loadLastSeenUtc: async () => 0,
+    })
+
+    await runPollCycle(deps)
+    const firstCycleRotation = rotateSourcesAfterSuccessfulCycle(
+      sourceOrder,
+      fetchResult,
+    )
+    sourceOrder = firstCycleRotation.sourceOrder
+
+    await runPollCycle(deps)
+    const secondCycleRotation = rotateSourcesAfterSuccessfulCycle(
+      sourceOrder,
+      fetchResult,
+    )
+
+    const calledUrls = fakeFetch.mock.calls.map(([input]) => String(input))
+
+    expect(firstCycleRotation.rotated).toBe(true)
+    expect(sourceOrder[0]).toBe(
+      'https://old.reddit.com/r/bapcsalescanada/new.json',
+    )
+    expect(secondCycleRotation.rotated).toBe(false)
+    expect(calledUrls).toEqual([
+      'https://www.reddit.com/r/bapcsalescanada/new.json',
+      'https://old.reddit.com/r/bapcsalescanada/new.json',
+      'https://old.reddit.com/r/bapcsalescanada/new.json',
+    ])
   })
 })
